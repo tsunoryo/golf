@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ミニマム・ゴルフ</title>
+    <style>
+        body { margin: 0; background: #222; text-align: center; font-family: sans-serif; overflow: hidden; }
+        canvas { background: #4caf50; display: block; margin: 0 auto; max-width: 100%; max-height: 100vh; }
+        #ui { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); color: white; font-size: 20px; font-weight: bold; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="ui">Stroke: <span id="score">0</span></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // 画面サイズ設定（スマホ縦画面ベース）
+        canvas.width = 360;
+        canvas.height = 640;
+
+        // ゲーム状態
+        let ball = { x: 180, y: 550, vx: 0, vy: 0, radius: 8, isMoving: false };
+        let hole = { x: 180, y: 100, radius: 15 };
+        let bunker = { x: 180, y: 320, rx: 60, ry: 40 }; // 楕円のバンカー
+        let score = 0;
+
+        // タッチ操作用
+        let dragStart = null;
+        let dragEnd = null;
+
+        // ループ処理
+        function update() {
+            // 物理挙動（移動と摩擦）
+            if (ball.isMoving) {
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                // 地形効果（バンカー判定）
+                let inBunker = Math.pow(ball.x - bunker.x, 2) / Math.pow(bunker.rx, 2) + Math.pow(ball.y - bunker.y, 2) / Math.pow(bunker.ry, 2) <= 1;
+                let friction = inBunker ? 0.88 : 0.97; // バンカー内は急減速
+
+                ball.vx *= friction;
+                ball.vy *= friction;
+
+                // 停止判定
+                if (Math.hypot(ball.vx, ball.vy) < 0.2) {
+                    ball.vx = 0; ball.vy = 0; ball.isMoving = false;
+                }
+
+                // 壁の跳ね返り
+                if (ball.x < ball.radius || ball.x > canvas.width - ball.radius) ball.vx *= -1;
+                if (ball.y < ball.radius || ball.y > canvas.height - ball.radius) ball.vy *= -1;
+
+                // カップイン判定
+                if (Math.hypot(ball.x - hole.x, ball.y - hole.y) < hole.radius) {
+                    alert(`ナイスイン！ 打数: ${score}`);
+                    resetGame();
+                }
+            }
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // 描画処理
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // フェアウェイ（背景色以外に一回り狭い安全エリアを描くとそれっぽくなりますが、今回はシンプルに）
+            // バンカー
+            ctx.fillStyle = "#e5c158";
+            ctx.beginPath();
+            ctx.ellipse(bunker.x, bunker.y, bunker.rx, bunker.ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // カップ（穴）
+            ctx.fillStyle = "#111";
+            ctx.beginPath();
+            ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // ボール
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 引っぱり中の予測線描画
+            if (dragStart && dragEnd && !ball.isMoving) {
+                ctx.strokeStyle = "rgba(255,255,255,0.6)";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(ball.x, ball.y);
+                // 引っ張った方向と逆に線を伸ばす
+                ctx.lineTo(ball.x - (dragEnd.x - dragStart.x), ball.y - (dragEnd.y - dragStart.y));
+                ctx.stroke();
+            }
+        }
+
+        function resetGame() {
+            ball.x = 180; ball.y = 550; ball.vx = 0; ball.vy = 0; ball.isMoving = false;
+            score = 0;
+            document.getElementById("score").innerText = score;
+        }
+
+        // スマホ用タッチイベント
+        canvas.addEventListener("touchstart", (e) => {
+            if (ball.isMoving) return;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            dragStart = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+        });
+
+        canvas.addEventListener("touchmove", (e) => {
+            if (!dragStart) return;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            dragEnd = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+        });
+
+        canvas.addEventListener("touchend", () => {
+            if (!dragStart || !dragEnd) return;
+            // 速度の計算（引っ張った距離に比例）
+            ball.vx = (dragStart.x - dragEnd.x) * 0.15;
+            ball.vy = (dragStart.y - dragEnd.y) * 0.15;
+            ball.isMoving = true;
+            score++;
+            document.getElementById("score").innerText = score;
+            dragStart = null; dragEnd = null;
+        });
+
+        update();
+    </script>
+</body>
+</html>
