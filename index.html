@@ -12,19 +12,16 @@
         #game-container { flex: 1; position: relative; background: #27ae60; overflow: hidden; display: flex; justify-content: center; }
         canvas { display: block; background: #2ecc71; }
         
-        /* 残り距離とショットパワーを画面上にオーバーレイ表示 */
         #distance-display { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.6); color: #fff; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; pointer-events: none; }
         #power-display { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6); color: #f1c40f; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; pointer-events: none; display: none; }
 
-        /* フッターUIとスマホメニュー被り対策 */
         #footer-ui { background: #2c3e50; padding: 12px 12px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; border-top: 2px solid #34495e; z-index: 10; }
         #club-selector { display: flex; justify-content: space-between; gap: 6px; }
         .club-btn { flex: 1; padding: 14px 0; background: #34495e; color: #bdc3c7; border: 2px solid #7f8c8d; border-radius: 8px; font-weight: bold; font-size: 13px; }
         .club-btn.active { background: #e74c3c; color: white; border-color: #f1c40f; }
         
-        /* タイミング合わせ用のショットゲージ UI */
         #gauge-container { width: 100%; height: 24px; background: #34495e; border-radius: 12px; position: relative; overflow: hidden; border: 2px solid #bdc3c7; }
-        #just-area { position: absolute; left: 44%; width: 12%; height: 100%; background: #ffffff; box-shadow: 0 0 10px #fff; } /* 白枠を少し広げて12%に調整 */
+        #just-area { position: absolute; left: 44%; width: 12%; height: 100%; background: #ffffff; box-shadow: 0 0 10px #fff; }
         #gauge-bar { position: absolute; left: 0; top: 0; width: 6px; height: 100%; background: #f1c40f; transition: none; }
         #guide-text { color: #ecf0f1; text-align: center; font-size: 12px; font-weight: bold; }
         
@@ -43,7 +40,6 @@
     </div>
     <div id="game-container">
         <canvas id="golfCanvas"></canvas>
-        <!-- リアルタイム距離・パワー表示のUI要素 -->
         <div id="distance-display">残り: <span id="ui-dist">---</span>y</div>
         <div id="power-display">パワー: <span id="ui-power">0</span>%</div>
     </div>
@@ -71,7 +67,6 @@
         let wind = { angle: 0, speed: 0 };
         let gauge = { active: false, value: 0, dir: 1, speed: 3, savedPower: 0, savedAngle: 0, savedDist: 0 };
 
-        // 1ピクセルを何ヤード(y)とするかの換算率
         const PX_TO_YARD = 0.25;
 
         const COURSE_DATA = [
@@ -86,7 +81,6 @@
             { par: 4, bX: 180, bY: 1400, hX: 180, hY: 120, gR: 60, height: 1600, hazards: [{t:'pond',x:180,y:1000,rx:100,ry:50}] }
         ];
 
-        // 1Wのスピード(speed)を 5.5 から「3.2」へ、7Iを 3.5 から「2.2」へ、大幅にゆっくり調整！
         const CLUBS = { 
             '1W': { p: 0.24, f: 0.965, air: true, max: 15, maxDisperse: 0.35, speed: 3.2, maxPull: 150 }, 
             '7I': { p: 0.16, f: 0.95, air: true, max: 25, maxDisperse: 0.18, speed: 2.2, maxPull: 110 },  
@@ -112,27 +106,33 @@
         
         function selectClub(c) { if(gauge.active) return; currentClub = c; document.querySelectorAll(".club-btn").forEach(b => b.classList.toggle("active", b.innerText.includes(c))); }
         function updateCam() { cameraY = Math.max(0, Math.min(ball.y - VIEW_H * 0.6, COURSE_DATA[currentHoleIndex].height - VIEW_H)); }
-        function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = "①引っ張って離す ➔ ②中央の白枠でタイミングよく再タップ！"; document.getElementById("power-display").style.display = "none"; }
+        function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = "①引っ張って強さを調整 ➔ ②中央の白枠で再タップ！"; document.getElementById("power-display").style.display = "none"; }
         function updateDistanceDisplay() { const distPx = Math.hypot(ball.x - hole.x, ball.y - hole.y); document.getElementById("ui-dist").innerText = Math.round(distPx * PX_TO_YARD); }
         
         function handleStart(e) { 
             e.preventDefault(); 
-            const t = e.touches ? e.touches : e, r = canvas.getBoundingClientRect(); 
+            const t = (e.touches && e.touches.length > 0) ? e.touches[0] : e;
+            const r = canvas.getBoundingClientRect(); 
             if (gauge.active) { triggerShot(); return; }
             if (ball.isMoving) return;
             if((t.clientY - r.top) > VIEW_H - 10) return;
+            
+            // 【バグ修正点】タッチ開始時、touchStart と touchCurrent の両方に同じ正常な初期数値を確実に代入
             touchStart = { x: t.clientX - r.left, y: t.clientY - r.top + cameraY }; 
-            touchCurrent = { ...touchStart }; 
+            touchCurrent = { x: t.clientX - r.left, y: t.clientY - r.top + cameraY }; 
             isDragging = true; 
+            
+            document.getElementById("ui-power").innerText = "0";
             document.getElementById("power-display").style.display = "block";
         }
         function handleMove(e) { 
             if (!isDragging || gauge.active) return; 
             e.preventDefault(); 
-            const t = e.touches ? e.touches : e, r = canvas.getBoundingClientRect(); 
+            const t = (e.touches && e.touches.length > 0) ? e.touches[0] : e;
+            const r = canvas.getBoundingClientRect(); 
             touchCurrent = { x: t.clientX - r.left, y: t.clientY - r.top + cameraY }; 
             
-            // 引っ張り強度（％）を計算して画面右上に表示
+            // 【バグ修正点】正常な数値同士で距離を計算し、NaN% を完全に排除
             const dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
             const dist = Math.hypot(dx, dy);
             const c = CLUBS[currentClub];
@@ -148,7 +148,6 @@
             
             if (dist > 15) { 
                 const c = CLUBS[currentClub]; 
-                // 各クラブの最大引っ張り距離(maxPull)でクランプ（制限）する
                 if (dist > c.maxPull) {
                     const ratio = c.maxPull / dist;
                     dx *= ratio; dy *= ratio; dist = c.maxPull;
@@ -171,7 +170,6 @@
             ball.lastX = ball.x; ball.lastY = ball.y; 
             const c = CLUBS[currentClub];
 
-            // 中央(50%)からのズレを判定。44%〜56%の間ならジャストミート
             let accuracyOffset = Math.abs(gauge.value - 50); 
             let finalAngle = gauge.savedAngle;
 
@@ -242,13 +240,12 @@
             const d = COURSE_DATA[currentHoleIndex]; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.save(); ctx.translate(0, -cameraY); 
             ctx.fillStyle = "#27ae60"; ctx.fillRect(0, 0, VIEW_W, d.height); 
             ctx.fillStyle = "#2ecc71"; ctx.fillRect(30, 0, VIEW_W - 60, d.height); 
-            d.hazards.forEach(h => { ctx.fillStyle = h.t === 'bunker' ? '#f1c40f' : '#3498db'; ctx.beginPath(); ctx.ellipse(h.x, h.y, h.rx, h.ry, 0, 0, Math.PI * 2); ctx.fill(); }); 
+            datahazards = d.hazards.forEach(h => { ctx.fillStyle = h.t === 'bunker' ? '#f1c40f' : '#3498db'; ctx.beginPath(); ctx.ellipse(h.x, h.y, h.rx, h.ry, 0, 0, Math.PI * 2); ctx.fill(); }); 
             ctx.fillStyle = "#26ae5f"; ctx.beginPath(); ctx.arc(hole.x, hole.y, 55, 0, Math.PI * 2); ctx.fill(); 
             ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2); ctx.fill(); 
             ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(hole.x, hole.y); ctx.lineTo(hole.x, hole.y - 25); ctx.stroke(); 
             ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(hole.x, hole.y - 25); ctx.lineTo(hole.x - 12, hole.y - 19); ctx.lineTo(hole.x, hole.y - 13); ctx.fill(); 
             
-            // 引っ張り操作中の予測線。最大パワー(maxPull)に応じた長さに制限して可視化
             if (isDragging && touchStart && touchCurrent) { 
                 let dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
                 let dist = Math.hypot(dx, dy);
@@ -258,7 +255,6 @@
                 ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ball.x, ball.y); 
                 ctx.lineTo(ball.x - dx * 0.8, ball.y - dy * 0.8); ctx.stroke(); 
                 
-                // フルスイングの上限ラインを丸枠でわかりやすく描画
                 ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(ball.x, ball.y, c.maxPull * 0.8, 0, Math.PI * 2); ctx.stroke();
             } 
             if (ball.height > 0) { ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(ball.x + ball.height*0.2, ball.y + ball.height*0.3, ball.radius, 0, Math.PI * 2); ctx.fill(); } 
