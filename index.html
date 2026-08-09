@@ -62,7 +62,7 @@
         const canvas = document.getElementById("golfCanvas"), ctx = canvas.getContext("2d");
         const VIEW_W = 360; let VIEW_H = 500, currentHoleIndex = 0, scores = Array(9).fill(0), currentStroke = 0;
         
-        // 3Dワールド空間座標系。ボールは(0,0)から発射され、Yがピン（奥）に向かって増えていく
+        // 3Dワールド空間。ボール位置(x, y)。Yが奥に進むほど、ピン(hole.y)に「近づく」ように完全修正！
         let ball = { x: 0, y: 0, vx: 0, vy: 0, vz: 0, z: 0, radius: 5, isMoving: false, shotStartX: 0, shotStartY: 0 };
         let hole = { x: 0, y: 0, radius: 8, greenRadius: 35 };
         let currentClub = '1W', touchStart = null, touchCurrent = null, isDragging = false;
@@ -106,11 +106,10 @@
         function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = isGreenMode ? "芝目を読んでパットを沈めろ！" : "①下へ引っ張って狙う ➔ ②白枠で再タップ！"; document.getElementById("power-display").style.display = "none"; }
         function updateDistanceDisplay() { document.getElementById("ui-dist").innerText = Math.round(Math.hypot(ball.x - hole.x, ball.y - hole.y)) + "y"; }
         
-        // 【NaNバグ完全対策】あらゆるスマホ環境で確実に有効な数値を抜き出す防壁関数
         function getEventXY(e) {
             let cx = 0, cy = 0;
-            if (e.touches && e.touches.length > 0) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
-            else if (e.changedTouches && e.changedTouches.length > 0) { cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY; }
+            if (e.touches && e.touches.length > 0) { cx = e.touches.clientX; cy = e.touches.clientY; }
+            else if (e.changedTouches && e.changedTouches.length > 0) { cx = e.changedTouches.clientX; cy = e.changedTouches.clientY; }
             else { cx = e.clientX; cy = e.clientY; }
             return { x: Number(cx) || 0, y: Number(cy) || 0 };
         }
@@ -125,18 +124,25 @@
         function handleMove(e) { 
             if (!isDragging || gauge.active) return; e.preventDefault(); 
             const evPos = getEventXY(e), r = canvas.getBoundingClientRect(); 
-            touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top }; 
+            let nextX = evPos.x - r.left, nextY = evPos.y - r.top;
             
-            // NaNを絶対に発生させない絶対値計算
-            const dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
-            const dist = Math.hypot(dx, dy), c = CLUBS[currentClub];
-            const pPct = Math.min(Math.round((dist / c.maxPull) * 100), 100);
+            let dx = nextX - touchStart.x, dy = nextY - touchStart.y;
+            let dist = Math.hypot(dx, dy); const c = CLUBS[currentClub];
+            
+            // 【100%上限制限ストッパー】最大引っ張り(maxPull)を超えたら、それ以上引っ張れないようにクランプ
+            if (dist > c.maxPull) {
+                let ratio = c.maxPull / dist;
+                nextX = touchStart.x + dx * ratio;
+                nextY = touchStart.y + dy * ratio;
+            }
+            touchCurrent = { x: nextX, y: nextY };
+            
+            const finalDist = Math.hypot(touchCurrent.x - touchStart.x, touchCurrent.y - touchStart.y);
+            const pPct = Math.min(Math.round((finalDist / c.maxPull) * 100), 100);
             document.getElementById("ui-power").innerText = isNaN(pPct) ? "0" : pPct;
         }
         function handleEnd(e) { 
             if (!isDragging || gauge.active) return; isDragging = false; 
-            const evPos = getEventXY(e), r = canvas.getBoundingClientRect(); 
-            touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top }; 
             let dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y; let dist = Math.hypot(dx, dy); 
             
             if (dist > 15) { 
@@ -146,9 +152,9 @@
                 if (isGreenMode) {
                     gauge.savedPowerX = -dx * c.pX * 1.5; gauge.savedPowerY = -dy * c.pY * 1.5;
                 } else {
-                    // 下に引っ張る(dyがプラス)ほど、順方向(前進プラス)へまっすぐ飛ぶようベクトルの正負を固定
+                    // 【逆走バグ修正】下に引っ張る（dyがプラス）ほど、前方のピン（＋方向）へ進むように計算式を絶対固定！
                     gauge.savedPowerX = -dx * c.pX;
-                    gauge.savedPowerY = Math.max(2, dy * c.pY); 
+                    gauge.savedPowerY = Math.max(3, dy * c.pY); 
                 }
                 gauge.savedDist = dist; gauge.active = true; gauge.value = 0; gauge.dir = 1; gauge.speed = c.speed;
                 document.getElementById("guide-text").innerText = "🔴 画面を今すぐ再タップしてタイミングよく止めて！";
@@ -192,6 +198,7 @@
                 if (Math.hypot(ball.vx, ball.vy) < 0.1 && ball.z <= 0) {
                     ball.vx = 0; ball.vy = 0; ball.isMoving = false; currentStroke++;
                     document.getElementById("ui-stroke").innerText = currentStroke;
+                    // 残り距離がグリーン半径内になったらパットモードへ
                     if (Math.hypot(ball.x - hole.x, ball.y - hole.y) < hole.greenRadius) { isGreenMode = true; selectClub('PT'); }
                     resetGauge();
                 }
@@ -211,19 +218,18 @@
         function render() {
             const d = COURSE_DATA[currentHoleIndex]; ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (!isGreenMode) {
-                // 3D背景（スカイライン）
                 let grad = ctx.createLinearGradient(0, 0, 0, VIEW_H*0.4); grad.addColorStop(0, "#4a90e2"); grad.addColorStop(1, "#87CEEB");
                 ctx.fillStyle = grad; ctx.fillRect(0, 0, VIEW_W, VIEW_H * 0.4);
                 ctx.fillStyle = "#1e824c"; ctx.fillRect(0, VIEW_H * 0.4, VIEW_W, VIEW_H * 0.6);
                 
-                // 3D遠近フェアウェイ（現在のボール位置からピンの残り距離に応じて、フェアウェイが正しく手前にスクロール・拡大）
+                // 3D遠近フェアウェイ（現在のボール位置に応じて正しく伸縮）
                 ctx.fillStyle = "#2ecc71"; ctx.beginPath();
                 ctx.moveTo(VIEW_W * -0.5, VIEW_H); ctx.lineTo(VIEW_W * 1.5, VIEW_H);
                 ctx.lineTo(VIEW_W/2 + (d.doglegX - ball.x) * 0.2 + 30, VIEW_H * 0.4);
                 ctx.lineTo(VIEW_W/2 + (d.doglegX - ball.x) * 0.2 - 30, VIEW_H * 0.4);
                 ctx.closePath(); ctx.fill();
 
-                // 固定空間上に正しく縮尺描画される3Dグリーン
+                // 固定3D空間に正しく配置されるグリーン（ボールがピンに「近づく」ほど手前に拡大拡大してくるよう完全修正！）
                 let remY = Math.max(10, d.hDist - ball.y);
                 let gScale = 0.1 + ((d.hDist - remY) / d.hDist) * 0.9;
                 let gYyr = VIEW_H * 0.4 + (remY / d.hDist) * (VIEW_H * 0.5);
@@ -233,23 +239,21 @@
                 ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, 2 * gScale); ctx.beginPath(); ctx.moveTo(gXyr, gYyr); ctx.lineTo(gXyr, gYyr - 25 * gScale); ctx.stroke();
                 ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(gXyr, gYyr - 25 * gScale); ctx.lineTo(gXyr - 10 * gScale, gYyr - 21 * gScale); ctx.lineTo(gXyr, gYyr - 17 * gScale); ctx.fill();
 
-                // 自ボール（3Dショット：打つと画面奥のピンへ放物線を描いて突き進む。2打目以降も現在地から綺麗に再起動）
-                let currentBallY = VIEW_H - 50;
-                let currentBallX = VIEW_W / 2;
+                // 自ボール（3Dショット：打つと奥のピンへ突き進み、2打目以降もその地点から綺麗に再スイング）
+                let currentBallY = VIEW_H - 50; let currentBallX = VIEW_W / 2;
                 if (ball.isMoving) {
                     let progress = Math.min(1, (ball.y - ball.shotStartY) / 200);
                     currentBallY = (VIEW_H - 50) - (progress * 120);
                     currentBallX = (VIEW_W / 2) + (ball.x - ball.shotStartX) * 1.5;
                 }
-                ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(currentBallX, currentBallY, ball.radius, 0, Math.PI*2); ctx.fill(); // 影
+                ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(currentBallX, currentBallY, ball.radius, 0, Math.PI*2); ctx.fill();
                 ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(currentBallX, currentBallY - ball.z, ball.radius + ball.z * 0.08, 0, Math.PI*2); ctx.fill();
 
                 if (isDragging && touchStart && touchCurrent) {
                     ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(VIEW_W/2, VIEW_H - 50);
-                    ctx.lineTo(VIEW_W/2 - (touchCurrent.x - touchStart.x)*0.7, VIEW_H - 50 - (touchCurrent.y - touchStart.y)*0.7); ctx.stroke();
+                    ctx.lineTo(touchCurrent.x, touchCurrent.y); ctx.stroke(); // ガイド線を直感的な引っ張りに連動
                 }
             } else {
-                // パットモード（高精度グリーン見下ろし2D）
                 ctx.fillStyle = "#26ae5f"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
                 let pX = VIEW_W / 2 + (hole.x - ball.x) * 4; let pY = VIEW_H / 2 - (hole.y - ball.y) * 4;
                 ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(pX, pY, hole.radius * 1.5, 0, Math.PI * 2); ctx.fill();
