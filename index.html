@@ -67,7 +67,6 @@
         let wind = { angle: 0, speed: 0 };
         let gauge = { active: false, value: 0, dir: 1, speed: 3, savedPower: 0, savedAngle: 0, savedDist: 0 };
 
-        // 1ピクセルを 0.25ヤード とする（4ピクセル = 1ヤード）
         const PX_TO_YARD = 0.25;
 
         const COURSE_DATA = [
@@ -82,8 +81,6 @@
             { par: 4, bX: 180, bY: 1400, hX: 180, hY: 120, gR: 60, height: 1600, hazards: [{t:'pond',x:180,y:1000,rx:100,ry:50}] }
         ];
 
-        // 【飛距離バグ修正】摩擦(f)と初速パワー(p)の比率を再計算し、
-        // 1W=160y (640px)、7I=100y (400px)、PT=30y (120px) がフルスイング時にきっちり飛ぶ物理パラメータに修正
         const CLUBS = { 
             '1W': { p: 0.160, f: 0.965, air: true, max: 15, maxDisperse: 0.35, speed: 3.2, maxPull: 150, targetY: 160 }, 
             '7I': { p: 0.145, f: 0.950, air: true, max: 25, maxDisperse: 0.18, speed: 2.2, maxPull: 110, targetY: 100 },  
@@ -112,16 +109,34 @@
         function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = "①引っ張って強さを調整 ➔ ②中央の白枠で再タップ！"; document.getElementById("power-display").style.display = "none"; }
         function updateDistanceDisplay() { const distPx = Math.hypot(ball.x - hole.x, ball.y - hole.y); document.getElementById("ui-dist").innerText = Math.round(distPx * PX_TO_YARD); }
         
+        // タッチとマウスの両方から「確実」にXY座標を抜き出す共通関数（NaN化の完全防止）
+        function getEventXY(e) {
+            let clientX = 0, clientY = 0;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            return { x: clientX, y: clientY };
+        }
+
         function handleStart(e) { 
             e.preventDefault(); 
-            const t = (e.touches && e.touches.length > 0) ? e.touches : e;
-            const r = canvas.getBoundingClientRect(); 
             if (gauge.active) { triggerShot(); return; }
             if (ball.isMoving) return;
-            if((t.clientY - r.top) > VIEW_H - 10) return;
+
+            const evPos = getEventXY(e);
+            const r = canvas.getBoundingClientRect(); 
+            if((evPos.y - r.top) > VIEW_H - 10) return;
             
-            touchStart = { x: t.clientX - r.left, y: t.clientY - r.top + cameraY }; 
-            touchCurrent = { x: t.clientX - r.left, y: t.clientY - r.top + cameraY }; 
+            // 座標位置を確定
+            touchStart = { x: evPos.x - r.left, y: evPos.y - r.top + cameraY }; 
+            touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top + cameraY }; 
             isDragging = true; 
             
             document.getElementById("ui-power").innerText = "0";
@@ -130,10 +145,12 @@
         function handleMove(e) { 
             if (!isDragging || gauge.active) return; 
             e.preventDefault(); 
-            const t = (e.touches && e.touches.length > 0) ? e.touches : e;
-            const r = canvas.getBoundingClientRect(); 
-            touchCurrent = { x: t.clientX - r.left, y: t.clientY - r.top + cameraY }; 
             
+            const evPos = getEventXY(e);
+            const r = canvas.getBoundingClientRect(); 
+            touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top + cameraY }; 
+            
+            // 安全な数値オブジェクトから距離を計算（NaNを完全に排除）
             const dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
             const dist = Math.hypot(dx, dy);
             const c = CLUBS[currentClub];
@@ -141,9 +158,14 @@
             document.getElementById("ui-power").innerText = powerPercent;
         }
 
-        function handleEnd() { 
+        function handleEnd(e) { 
             if (!isDragging || gauge.active) return; 
             isDragging = false; 
+            
+            const evPos = getEventXY(e);
+            const r = canvas.getBoundingClientRect(); 
+            touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top + cameraY }; 
+
             let dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
             let dist = Math.hypot(dx, dy); 
             
@@ -154,9 +176,7 @@
                     dx *= ratio; dy *= ratio; dist = c.maxPull;
                 }
 
-                // 【バグ修正点】計算の重複・固定掛け算を排除し、引っ張り割合に応じた純粋な初速パワーを保存
                 const pullRatio = dist / c.maxPull;
-                // 物理公式から逆算した、目標ヤードを飛ばすための適正な最大ピクセル初速を計算
                 const maxPixelVelocity = (c.targetY / PX_TO_YARD) * (1 - c.f);
                 
                 gauge.savedPower = maxPixelVelocity * pullRatio;
@@ -188,7 +208,6 @@
                 document.getElementById("guide-text").innerText = "✨ NICE SHOT!! 完璧なストレート！";
             }
 
-            // 【バグ修正点】確定した純粋な初速でボールを打ち出し（余計な0.4などの縮小を排除）
             ball.vx = Math.cos(finalAngle) * gauge.savedPower;
             ball.vy = Math.sin(finalAngle) * gauge.savedPower;
             ball.isMoving = true; 
@@ -262,7 +281,6 @@
                 ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ball.x, ball.y); 
                 ctx.lineTo(ball.x - dx * 0.8, ball.y - dy * 0.8); ctx.stroke(); 
                 
-                // 【可視化の修正】最大飛距離（y）に比例した、正確なフルスイング時の到達可能範囲を丸枠で描画
                 ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(ball.x, ball.y, c.targetY / PX_TO_YARD, 0, Math.PI * 2); ctx.stroke();
             } 
             if (ball.height > 0) { ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(ball.x + ball.height*0.2, ball.y + ball.height*0.3, ball.radius, 0, Math.PI * 2); ctx.fill(); } 
