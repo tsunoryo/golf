@@ -2,255 +2,143 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3Dモバイル 9H ゴルフ Fixed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>シンプル 2D ゴルフ</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
-        body { background: #1a1a1a; font-family: sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        #header-ui { background: #2c3e50; color: white; padding: 10px; display: flex; justify-content: space-around; font-size: 13px; font-weight: bold; border-bottom: 2px solid #34495e; }
-        .ui-val { font-size: 16px; color: #f1c40f; display: block; text-align: center; }
-        #game-container { flex: 1; position: relative; background: #27ae60; overflow: hidden; display: flex; justify-content: center; }
-        canvas { display: block; background: #87CEEB; }
-        #distance-display { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.6); color: #fff; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; pointer-events: none; }
-        #power-display { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6); color: #f1c40f; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; pointer-events: none; display: none; }
-        #green-info { position: absolute; top: 50px; left: 12px; background: rgba(231, 76, 60, 0.85); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; display: none; pointer-events: none; }
-        #footer-ui { background: #2c3e50; padding: 12px 12px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; border-top: 2px solid #34495e; z-index: 10; }
-        #club-selector { display: flex; justify-content: space-between; gap: 6px; }
-        .club-btn { flex: 1; padding: 14px 0; background: #34495e; color: #bdc3c7; border: 2px solid #7f8c8d; border-radius: 8px; font-weight: bold; font-size: 13px; }
-        .club-btn.active { background: #e74c3c; color: white; border-color: #f1c40f; }
-        #gauge-container { width: 100%; height: 24px; background: #34495e; border-radius: 12px; position: relative; overflow: hidden; border: 2px solid #bdc3c7; }
-        #just-area { position: absolute; left: 44%; width: 12%; height: 100%; background: #ffffff; box-shadow: 0 0 10px #fff; }
-        #gauge-bar { position: absolute; left: 0; top: 0; width: 6px; height: 100%; background: #f1c40f; transition: none; }
-        #guide-text { color: #ecf0f1; text-align: center; font-size: 12px; font-weight: bold; }
-        #result-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); color: white; z-index: 100; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
-        .score-table { width: 100%; max-width: 340px; border-collapse: collapse; margin: 20px 0; font-size: 12px; text-align: center; }
-        .score-table th, .score-table td { border: 1px solid #7f8c8d; padding: 6px 4px; }
+        body { background: #222; font-family: sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        #ui { color: white; font-size: 20px; font-weight: bold; margin-bottom: 10px; }
+        canvas { background: #4caf50; display: block; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 8px; }
     </style>
 </head>
 <body>
-    <div id="header-ui">
-        <div>HOLE<span id="ui-hole" class="ui-val">1/9</span></div>
-        <div>PAR<span id="ui-par" class="ui-val">4</span></div>
-        <div>WIND<span id="ui-wind" class="ui-val">➔ 0m</span></div>
-        <div>STROKE<span id="ui-stroke" class="ui-val">0</span></div>
-        <div>TOTAL<span id="ui-total" class="ui-val">E</span></div>
-    </div>
-    <div id="game-container">
-        <canvas id="golfCanvas"></canvas>
-        <div id="distance-display">残り: <span id="ui-dist">---</span>y</div>
-        <div id="green-info">⛳ 芝目: ➔ (強)</div>
-        <div id="power-display">パワー: <span id="ui-power">0</span>%</div>
-    </div>
-    <div id="footer-ui">
-        <div id="gauge-container">
-            <div id="just-area"></div>
-            <div id="gauge-bar"></div>
-        </div>
-        <div id="club-selector">
-            <button class="club-btn active" onclick="selectClub('1W')">1W (160y)</button>
-            <button class="club-btn" onclick="selectClub('7I')">7I (100y)</button>
-            <button class="club-btn" onclick="selectClub('PT')">PT (30y)</button>
-        </div>
-        <div id="guide-text">①下へ引っ張って狙う ➔ ②中央の白枠で再タップ！</div>
-    </div>
-    <div id="result-overlay">
-        <h2>🎉 ROUND COMPLETED!</h2>
-        <table class="score-table" id="scoreTable"></table>
-        <button style="padding:12px 30px; background:#2ecc71; color:white; border:none; border-radius:25px; font-weight:bold;" onclick="restartGame()">もう一度プレイ</button>
-    </div>
+    <div id="ui">SCORE: <span id="score">0</span></div>
+    <canvas id="gameCanvas"></canvas>
+
     <script>
-        const canvas = document.getElementById("golfCanvas"), ctx = canvas.getContext("2d");
-        const VIEW_W = 360; let VIEW_H = 500, currentHoleIndex = 0, scores = Array(9).fill(0), currentStroke = 0;
-        
-        let ball = { x: 0, y: 0, vx: 0, vy: 0, vz: 0, z: 0, radius: 5, isMoving: false, shotStartX: 0, shotStartY: 0 };
-        let hole = { x: 0, y: 0, radius: 8, greenRadius: 35 };
-        let currentClub = '1W', touchStart = null, touchCurrent = null, isDragging = false;
-        let wind = { angle: 0, speed: 0 }, greenSlope = { angle: 0, speed: 0 };
-        let gauge = { active: false, value: 0, dir: 1, speed: 3, savedPowerX: 0, savedPowerY: 0, savedDist: 0 };
-        let isGreenMode = false;
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
 
-        const COURSE_DATA = [
-            { par: 4, hDist: 340, hX: 15,  gR: 35, doglegX: 20 },
-            { par: 3, hDist: 140, hX: 0,   gR: 30, doglegX: 0  },
-            { par: 4, hDist: 390, hX: -30, gR: 35, doglegX: -35},
-            { par: 5, hDist: 500, hX: 30,  gR: 40, doglegX: 40 },
-            { par: 4, hDist: 320, hX: -15, gR: 32, doglegX: -10},
-            { par: 3, hDist: 150, hX: 20,  gR: 30, doglegX: 10 },
-            { par: 5, hDist: 540, hX: 0,   gR: 40, doglegX: -20},
-            { par: 4, hDist: 370, hX: 25,  gR: 35, doglegX: 15 },
-            { par: 4, hDist: 410, hX: 0,   gR: 38, doglegX: 0  }
-        ];
+        // スマホに合わせた縦長固定画面
+        canvas.width = 360;
+        canvas.height = 540;
 
-        const CLUBS = { 
-            '1W': { pX: 0.045, pY: 0.11, f: 0.955, air: true,  speed: 3.2, maxPull: 140, hFactor: 0.35 }, 
-            '7I': { pX: 0.035, pY: 0.08, f: 0.930, air: true,  speed: 2.2, maxPull: 110, hFactor: 0.55 },  
-            'PT': { pX: 0.030, pY: 0.05, f: 0.880, air: false, speed: 1.2, maxPull: 70,  hFactor: 0.0 }   
-        };
+        let ball = { x: 180, y: 450, vx: 0, vy: 0, radius: 8, isMoving: false };
+        let hole = { x: 180, y: 90, radius: 14 };
+        let score = 0;
+        let touchStart = null, touchCurrent = null, isDragging = false;
 
-        function init() { VIEW_H = document.getElementById("game-container").clientHeight; canvas.width = VIEW_W; canvas.height = VIEW_H; loadHole(currentHoleIndex); canvas.addEventListener("touchstart", handleStart, {passive: false}); canvas.addEventListener("touchmove", handleMove, {passive: false}); canvas.addEventListener("touchend", handleEnd, {passive: false}); canvas.addEventListener("mousedown", handleStart); canvas.addEventListener("mousemove", handleMove); canvas.addEventListener("mouseup", handleEnd); window.requestAnimationFrame(gameLoop); }
-        
-        function loadHole(idx) { 
-            const d = COURSE_DATA[idx]; document.getElementById("ui-hole").innerText = `${idx + 1}/9`; document.getElementById("ui-par").innerText = d.par; currentStroke = 0; document.getElementById("ui-stroke").innerText = 0; 
-            wind.angle = Math.random() * Math.PI * 2; wind.speed = Math.floor(Math.random() * 7); 
-            document.getElementById("ui-wind").innerText = `${wind.speed}m (${Math.round(wind.angle * 180 / Math.PI)}°)`;
-            greenSlope.angle = Math.random() * Math.PI * 2; greenSlope.speed = 0.03 + Math.random() * 0.02; 
-            const dirs = ["➔ 右", "➔ 下", "➔ 左", "➔ 上"];
-            document.getElementById("green-info").innerText = `⛳ 芝目: ${dirs[Math.floor(((greenSlope.angle + Math.PI/4) % (Math.PI * 2)) / (Math.PI / 2))]}傾斜`;
-            
-            isGreenMode = false; ball.x = 0; ball.y = 0; ball.vx = 0; ball.vy = 0; ball.vz = 0; ball.z = 0; ball.isMoving = false;
-            hole.x = d.hX; hole.y = d.hDist; hole.greenRadius = d.gR; selectClub('1W'); updateScore(); resetGauge(); updateDistanceDisplay();
+        function init() {
+            // マウスとタッチのイベント登録
+            canvas.addEventListener("touchstart", handleStart, {passive: false});
+            canvas.addEventListener("touchmove", handleMove, {passive: false});
+            canvas.addEventListener("touchend", handleEnd, {passive: false});
+            canvas.addEventListener("mousedown", handleStart);
+            canvas.addEventListener("mousemove", handleMove);
+            canvas.addEventListener("mouseup", handleEnd);
+            window.requestAnimationFrame(gameLoop);
         }
-        
-        function selectClub(c) { if(gauge.active) return; currentClub = c; document.querySelectorAll(".club-btn").forEach(b => b.classList.toggle("active", b.innerText.includes(c))); }
-        function updateCam() { cameraY = Math.max(0, Math.min(ball.y - VIEW_H * 0.6, COURSE_DATA[currentHoleIndex].height - VIEW_H)); }
-        function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = isGreenMode ? "芝目を読んでパットを沈めろ！" : "①下へ引っ張って狙う ➔ ②白枠で再タップ！"; document.getElementById("power-display").style.display = "none"; }
-        function updateDistanceDisplay() { document.getElementById("ui-dist").innerText = Math.round(Math.hypot(ball.x - hole.x, ball.y - hole.y)) + "y"; }
-        
+
         function getEventXY(e) {
             let cx = 0, cy = 0;
-            if (e.touches && e.touches.length > 0) { cx = e.touches.clientX; cy = e.touches.clientY; }
-            else if (e.changedTouches && e.changedTouches.length > 0) { cx = e.changedTouches.clientX; cy = e.changedTouches.clientY; }
+            if (e.touches && e.touches.length > 0) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
             else { cx = e.clientX; cy = e.clientY; }
-            return { x: Number(cx) || 0, y: Number(cy) || 0 };
+            return { x: cx, y: cy };
         }
 
-        function handleStart(e) { 
-            e.preventDefault(); if (gauge.active) { triggerShot(); return; } if (ball.isMoving) return;
-            const evPos = getEventXY(e), r = canvas.getBoundingClientRect(); if((evPos.y - r.top) > VIEW_H - 10) return;
-            touchStart = { x: evPos.x - r.left, y: evPos.y - r.top }; touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top }; isDragging = true; 
-            document.getElementById("ui-power").innerText = "0"; document.getElementById("power-display").style.display = "block";
+        function handleStart(e) {
+            e.preventDefault();
+            if (ball.isMoving) return;
+            const pos = getEventXY(e);
+            const rect = canvas.getBoundingClientRect();
+            touchStart = { x: pos.x - rect.left, y: pos.y - rect.top };
+            touchCurrent = { ...touchStart };
+            isDragging = true;
         }
-        
-        function handleMove(e) { 
-            if (!isDragging || gauge.active) return; e.preventDefault(); 
-            const evPos = getEventXY(e), r = canvas.getBoundingClientRect(); 
-            touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top }; 
+
+        function handleMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            const pos = getEventXY(e);
+            const rect = canvas.getBoundingClientRect();
+            touchCurrent = { x: pos.x - rect.left, y: pos.y - rect.top };
+        }
+
+        function handleEnd(e) {
+            if (!isDragging) return;
+            isDragging = false;
             
-            const dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
-            const dist = Math.hypot(dx, dy), c = CLUBS[currentClub];
-            const pPct = Math.min(Math.round((dist / c.maxPull) * 100), 100);
-            document.getElementById("ui-power").innerText = isNaN(pPct) ? "0" : pPct;
-        }
-        function handleEnd(e) { 
-            if (!isDragging || gauge.active) return; isDragging = false; 
-            const c = CLUBS[currentClub];
-            let dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y; let dist = Math.hypot(dx, dy); 
-            
-            if (dist > 15) { 
-                if (dist > c.maxPull) { const ratio = c.maxPull / dist; dx *= ratio; dy *= ratio; dist = c.maxPull; }
-                let pullRatio = dist / c.maxPull;
-                
-                if (isGreenMode) {
-                    gauge.savedPowerX = -dx * c.pX * 1.5; gauge.savedPowerY = -dy * c.pY * 1.5;
-                } else {
-                    gauge.savedPowerX = -dx * c.pX; gauge.savedPowerY = Math.max(3, dy * c.pY); 
-                }
-                gauge.savedDist = dist; gauge.active = true; gauge.value = 0; gauge.dir = 1; gauge.speed = c.speed;
-                document.getElementById("guide-text").innerText = "🔴 画面を今すぐ再タップしてタイミングよく止めて！";
-            } else { document.getElementById("power-display").style.display = "none"; }
+            // 引っ張った距離と方向を計算
+            const dx = touchCurrent.x - touchStart.x;
+            const dy = touchCurrent.y - touchStart.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist > 10) {
+                // 引っ張った方向と逆（前方）へ飛ばす。最大パワー制限付き
+                const power = Math.min(dist * 0.12, 15);
+                const angle = Math.atan2(dy, dx);
+                ball.vx = -Math.cos(angle) * power;
+                ball.vy = -Math.sin(angle) * power;
+                ball.isMoving = true;
+                score++;
+                document.getElementById("score").innerText = score;
+            }
+            touchStart = null;
+            touchCurrent = null;
         }
 
-        function triggerShot() {
-            gauge.active = false; ball.shotStartX = ball.x; ball.shotStartY = ball.y; const c = CLUBS[currentClub];
-            let offset = Math.abs(gauge.value - 50); let speedX = gauge.savedPowerX, speedY = gauge.savedPowerY;
-            if (offset > 6) {
-                speedX += ((gauge.value > 50) ? 1 : -1) * (offset / 50) * 1.5;
-                document.getElementById("guide-text").innerText = "❌ ミスショット！打球が曲がりました！";
-            } else { document.getElementById("guide-text").innerText = "✨ NICE SHOT!! 完璧なストレート！"; }
-            ball.vx = speedX; ball.vy = speedY;
-            if (c.air && !isGreenMode) { ball.vz = (gauge.savedDist / c.maxPull) * c.hFactor * 6.5; } else { ball.vz = 0; }
-            ball.isMoving = true;
-        }
-
-        function updateScore() { let t = 0; for(let i=0; i<=currentHoleIndex; i++) if(scores[i]>0) t += (scores[i] - COURSE_DATA[i].par); document.getElementById("ui-total").innerText = t === 0 ? "E" : (t > 0 ? `+${t}` : t); }
-        function gameLoop() { if (gauge.active) { gauge.value += gauge.speed * gauge.dir; if (gauge.value >= 100) { gauge.value = 100; gauge.dir = -1; } if (gauge.value <= 0) { gauge.value = 0; gauge.dir = 1; } document.getElementById("gauge-bar").style.left = gauge.value + "%"; } updateLogic(); render(); window.requestAnimationFrame(gameLoop); }
-        
-        function updateLogic() {
-            const d = COURSE_DATA[currentHoleIndex];
+        function gameLoop() {
+            // 物理移動とグリーン摩擦による減速
             if (ball.isMoving) {
-                const c = CLUBS[currentClub];
-                if (ball.vz > 0 || ball.z > 0) {
-                    ball.z += ball.vz; ball.vz -= 0.16;
-                    ball.vx += Math.cos(wind.angle) * (wind.speed * 0.004); ball.vy += Math.sin(wind.angle) * (wind.speed * 0.004);
-                    if (ball.z <= 0) { ball.z = 0; ball.vz = 0; }
-                } else {
-                    let fr = c.f; 
-                    if (isGreenMode) {
-                        ball.vx += Math.cos(greenSlope.angle) * greenSlope.speed * 0.05; ball.vy += Math.sin(greenSlope.angle) * greenSlope.speed * 0.05;
-                    } else {
-                        if (Math.abs(ball.x - (d.doglegX * (ball.y / d.hDist))) > 40) fr = 0.78;
-                    }
-                    ball.vx *= fr; ball.vy *= fr;
-                }
-                ball.x += ball.vx; ball.y += ball.vy;
-                
-                if (Math.hypot(ball.vx, ball.vy) < 0.1 && ball.z <= 0) {
-                    ball.vx = 0; ball.vy = 0; ball.isMoving = false; currentStroke++;
-                    document.getElementById("ui-stroke").innerText = currentStroke;
-                    if (Math.hypot(ball.x - hole.x, ball.y - hole.y) < hole.greenRadius) { isGreenMode = true; selectClub('PT'); }
-                    resetGauge();
-                }
-                let currentDist = Math.hypot(ball.x - hole.x, ball.y - hole.y);
-                if (isGreenMode && ball.z <= 0 && Math.hypot(ball.vx, ball.vy) < 2.5 && currentDist < hole.radius) {
-                    ball.vx = 0; ball.vy = 0; ball.isMoving = false; currentStroke++; handleHoleOut(); return;
-                }
-                updateDistanceDisplay();
-            }
-            document.getElementById("green-info").style.display = (isGreenMode && !ball.isMoving) ? "block" : "none";
-        }
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+                ball.vx *= 0.96; // なめらかな減速
+                ball.vy *= 0.96;
 
-        function handleHoleOut() { alert(`⛳️ HOLE OUT! \n\n結果: ${currentStroke}ストローク`); scores[currentHoleIndex] = currentStroke; if (currentHoleIndex < 8) { currentHoleIndex++; loadHole(currentHoleIndex); } else { showResults(); } }
-        function showResults() { const o = document.getElementById("result-overlay"), t = document.getElementById("scoreTable"); t.innerHTML = `<tr><th>Hole</th>${Array.from({length:9},(_,i)=>`<td>${i+1}</td>`).join('')}<td>TTL</td></tr><tr><th>Par</th>${COURSE_DATA.map(d=>`<td>${d.par}</td>`).join('')}<td>36</td></tr><tr><th>Score</th>${scores.map(s=>`<td>${s}</td>`).join('')}<td>${scores.reduce((a,b)=>a+b,0)}</td></tr>`; o.style.display = "flex"; }
-        function restartGame() { document.getElementById("result-overlay").style.display = "none"; currentHoleIndex = 0; scores = Array(9).fill(0); loadHole(0); }
+                // 壁の跳ね返り
+                if (ball.x < ball.radius || ball.x > canvas.width - ball.radius) { ball.vx *= -0.8; ball.x = ball.x < ball.radius ? ball.radius : canvas.width - ball.radius; }
+                if (ball.y < ball.radius || ball.y > canvas.height - ball.radius) { ball.vy *= -0.8; ball.y = ball.y < ball.radius ? ball.radius : canvas.height - ball.radius; }
 
-        function render() {
-            const d = COURSE_DATA[currentHoleIndex]; ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (!isGreenMode) {
-                let grad = ctx.createLinearGradient(0, 0, 0, VIEW_H*0.4); grad.addColorStop(0, "#4a90e2"); grad.addColorStop(1, "#87CEEB");
-                ctx.fillStyle = grad; ctx.fillRect(0, 0, VIEW_W, VIEW_H * 0.4);
-                ctx.fillStyle = "#1e824c"; ctx.fillRect(0, VIEW_H * 0.4, VIEW_W, VIEW_H * 0.6);
-                
-                ctx.fillStyle = "#2ecc71"; ctx.beginPath();
-                ctx.moveTo(VIEW_W * -0.5, VIEW_H); ctx.lineTo(VIEW_W * 1.5, VIEW_H);
-                ctx.lineTo(VIEW_W/2 + (d.doglegX - ball.x) * 0.2 + 30, VIEW_H * 0.4);
-                ctx.lineTo(VIEW_W/2 + (d.doglegX - ball.x) * 0.2 - 30, VIEW_H * 0.4);
-                ctx.closePath(); ctx.fill();
-
-                let remY = Math.max(10, d.hDist - ball.y);
-                let gScale = 0.1 + ((d.hDist - remY) / d.hDist) * 0.9;
-                let gYyr = VIEW_H * 0.4 + (remY / d.hDist) * (VIEW_H * 0.5);
-                let gXyr = VIEW_W / 2 + (hole.x - ball.x) * (gScale * 3);
-                
-                ctx.fillStyle = "#26ae5f"; ctx.beginPath(); ctx.ellipse(gXyr, gYyr, hole.greenRadius * gScale * 2, hole.greenRadius * gScale * 0.6, 0, 0, Math.PI*2); ctx.fill();
-                ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, 2 * gScale); ctx.beginPath(); ctx.moveTo(gXyr, gYyr); ctx.lineTo(gXyr, gYyr - 25 * gScale); ctx.stroke();
-                ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(gXyr, gYyr - 25 * gScale); ctx.lineTo(gXyr - 10 * gScale, gYyr - 21 * gScale); ctx.lineTo(gXyr, gYyr - 17 * gScale); ctx.fill();
-
-                let currentBallY = VIEW_H - 50; let currentBallX = VIEW_W / 2;
-                if (ball.isMoving) {
-                    let progress = Math.min(1, (ball.y - ball.shotStartY) / 200);
-                    currentBallY = (VIEW_H - 50) - (progress * 120); currentBallX = (VIEW_W / 2) + (ball.x - ball.shotStartX) * 1.5;
+                // 完全停止判定
+                if (Math.hypot(ball.vx, ball.vy) < 0.15) {
+                    ball.vx = 0; ball.vy = 0; ball.isMoving = false;
                 }
-                ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(currentBallX, currentBallY, ball.radius, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(currentBallX, currentBallY - ball.z, ball.radius + ball.z * 0.08, 0, Math.PI*2); ctx.fill();
 
-                if (isDragging && touchStart && touchCurrent) {
-                    ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(VIEW_W/2, VIEW_H - 50);
-                    ctx.lineTo(touchCurrent.x, touchCurrent.y); ctx.stroke();
-                }
-            } else {
-                ctx.fillStyle = "#26ae5f"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-                let pX = VIEW_W / 2 + (hole.x - ball.x) * 4; let pY = VIEW_H / 2 - (hole.y - ball.y) * 4;
-                ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(pX, pY, hole.radius * 1.5, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(pX, pY); ctx.lineTo(pX, pY - 20); ctx.stroke();
-                ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 1.5;
-                for(let x=20; x<VIEW_W; x+=40) { for(let y=20; y<VIEW_H; y+=40) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+Math.cos(greenSlope.angle)*10, y+Math.sin(greenSlope.angle)*10); ctx.stroke(); } }
-                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(VIEW_W/2, VIEW_H/2, ball.radius * 1.5, 0, Math.PI * 2); ctx.fill();
-                if (isDragging && touchStart && touchCurrent) {
-                    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(VIEW_W/2, VIEW_H/2);
-                    ctx.lineTo(VIEW_W/2 - (touchCurrent.x - touchStart.x), VIEW_H/2 - (touchCurrent.y - touchStart.y)); ctx.stroke();
+                // カップイン判定
+                if (Math.hypot(ball.x - hole.x, ball.y - hole.y) < hole.radius) {
+                    ball.vx = 0; ball.vy = 0; ball.isMoving = false;
+                    setTimeout(() => {
+                        alert(`カップイン！ 打数: ${score}`);
+                        score = 0; document.getElementById("score").innerText = score;
+                        ball.x = 180; ball.y = 450; // 位置リセット
+                    }, 100);
                 }
             }
+
+            // 描画処理
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // カップ（穴）
+            ctx.fillStyle = "#111";
+            ctx.beginPath(); ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2); ctx.fill();
+
+            // 引っぱり中のガイド線
+            if (isDragging && touchStart && touchCurrent) {
+                ctx.strokeStyle = "rgba(255,255,255,0.6)";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(ball.x, ball.y);
+                ctx.lineTo(ball.x - (touchCurrent.x - touchStart.x), ball.y - (touchCurrent.y - touchStart.y));
+                ctx.stroke();
+            }
+
+            // ボール
+            ctx.fillStyle = "#fff";
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill();
+
+            window.requestAnimationFrame(gameLoop);
         }
+
         window.onload = init;
     </script>
 </body>
