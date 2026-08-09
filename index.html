@@ -3,29 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3Dモバイル 9H ゴルフ Pro</title>
+    <title>3Dモバイル 9H ゴルフ Complete</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
         body { background: #1a1a1a; font-family: sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
         #header-ui { background: #2c3e50; color: white; padding: 10px; display: flex; justify-content: space-around; font-size: 13px; font-weight: bold; border-bottom: 2px solid #34495e; }
         .ui-val { font-size: 16px; color: #f1c40f; display: block; text-align: center; }
         #game-container { flex: 1; position: relative; background: #27ae60; overflow: hidden; display: flex; justify-content: center; }
-        canvas { display: block; background: #87CEEB; } /* 空色の背景 */
-        
+        canvas { display: block; background: #87CEEB; }
         #distance-display { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.6); color: #fff; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; pointer-events: none; }
         #power-display { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6); color: #f1c40f; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; pointer-events: none; display: none; }
         #green-info { position: absolute; top: 50px; left: 12px; background: rgba(231, 76, 60, 0.85); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; display: none; pointer-events: none; }
-
         #footer-ui { background: #2c3e50; padding: 12px 12px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; border-top: 2px solid #34495e; z-index: 10; }
         #club-selector { display: flex; justify-content: space-between; gap: 6px; }
         .club-btn { flex: 1; padding: 14px 0; background: #34495e; color: #bdc3c7; border: 2px solid #7f8c8d; border-radius: 8px; font-weight: bold; font-size: 13px; }
         .club-btn.active { background: #e74c3c; color: white; border-color: #f1c40f; }
-        
         #gauge-container { width: 100%; height: 24px; background: #34495e; border-radius: 12px; position: relative; overflow: hidden; border: 2px solid #bdc3c7; }
         #just-area { position: absolute; left: 44%; width: 12%; height: 100%; background: #ffffff; box-shadow: 0 0 10px #fff; }
         #gauge-bar { position: absolute; left: 0; top: 0; width: 6px; height: 100%; background: #f1c40f; transition: none; }
         #guide-text { color: #ecf0f1; text-align: center; font-size: 12px; font-weight: bold; }
-        
         #result-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); color: white; z-index: 100; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         .score-table { width: 100%; max-width: 340px; border-collapse: collapse; margin: 20px 0; font-size: 12px; text-align: center; }
         .score-table th, .score-table td { border: 1px solid #7f8c8d; padding: 6px 4px; }
@@ -55,7 +51,7 @@
             <button class="club-btn" onclick="selectClub('7I')">7I (100y)</button>
             <button class="club-btn" onclick="selectClub('PT')">PT (30y)</button>
         </div>
-        <div id="guide-text">①引っ張って方向と強さを調整 ➔ ②中央の白枠で再タップ！</div>
+        <div id="guide-text">①下へ引っ張って狙う ➔ ②中央の白枠で再タップ！</div>
     </div>
     <div id="result-overlay">
         <h2>🎉 ROUND COMPLETED!</h2>
@@ -66,55 +62,52 @@
         const canvas = document.getElementById("golfCanvas"), ctx = canvas.getContext("2d");
         const VIEW_W = 360; let VIEW_H = 500, currentHoleIndex = 0, scores = Array(9).fill(0), currentStroke = 0;
         
-        // 内部ゲームマップ座標系 (X: -150〜150の横幅, Y: 0〜800ヤードの縦長の奥行き)
-        let ball = { x: 0, y: 30, vx: 0, vy: 0, vz: 0, z: 0, radius: 5, isMoving: false, lastX: 0, lastY: 0, hangTime: 0 };
-        let hole = { x: 0, y: 400, radius: 8, greenRadius: 40 };
+        let ball = { x: 0, y: 0, vx: 0, vy: 0, vz: 0, z: 0, radius: 5, isMoving: false, lastX: 0, lastY: 0 };
+        let hole = { x: 0, y: 0, radius: 8, greenRadius: 35 };
         let currentClub = '1W', touchStart = null, touchCurrent = null, isDragging = false;
         let wind = { angle: 0, speed: 0 }, greenSlope = { angle: 0, speed: 0 };
         let gauge = { active: false, value: 0, dir: 1, speed: 3, savedPowerX: 0, savedPowerY: 0, savedDist: 0 };
-        let isGreenMode = false; // グリーン上（パット画面）かどうかのフラグ
+        let isGreenMode = false;
 
-        // 9ホールのコースデータ（ピンの位置、ドッグレッグ曲がり度、バンカー位置など）
         const COURSE_DATA = [
-            { par: 4, hX: 0,   hY: 380, gR: 35, doglegX: 0,   hazards: [{t:'bunker',x:-30,y:220,r:20},{t:'bunker',x:40,y:300,r:18}] },
-            { par: 3, hX: 20,  hY: 220, gR: 30, doglegX: 10,  hazards: [{t:'pond',x:0,y:140,r:35}] },
-            { par: 4, hX: -50, hY: 420, gR: 35, doglegX: -40, hazards: [{t:'pond',x:-20,y:250,r:30},{t:'bunker',x:20,y:350,r:15}] },
-            { par: 5, hX: 40,  hY: 550, gR: 40, doglegX: 50,  hazards: [{t:'bunker',x:-20,y:200,r:25},{t:'pond',x:30,y:380,r:40}] },
-            { par: 4, hX: -30, hY: 350, gR: 32, doglegX: -20, hazards: [{t:'bunker',x:20,y:220,r:22}] },
-            { par: 3, hX: 0,   hY: 180, gR: 30, doglegX: 0,   hazards: [{t:'pond',x:-30,y:100,r:20},{t:'bunker',x:30,y:120,r:12}] },
-            { par: 5, hX: 0,   hY: 580, gR: 40, doglegX: -30, hazards: [{t:'pond',x:0,y:250,r:45},{t:'bunker',x:40,y:450,r:20}] },
-            { par: 4, hX: 30,  hY: 400, gR: 35, doglegX: 20,  hazards: [{t:'bunker',x:-30,y:280,r:20},{t:'bunker',x:30,y:280,r:20}] },
-            { par: 4, hX: 0,   hY: 450, gR: 38, doglegX: 0,   hazards: [{t:'pond',x:0,y:280,r:50},{t:'bunker',x:-40,y:380,r:15}] }
+            { par: 4, hDist: 360, hX: 10,  gR: 35, doglegX: 15,  hazards: [{t:'bunker',x:-25,y:180,r:18},{t:'bunker',x:30,y:260,r:16}] },
+            { par: 3, hDist: 150, hX: 0,   gR: 30, doglegX: 0,   hazards: [{t:'pond',x:0,y:80,r:30}] },
+            { par: 4, hDist: 410, hX: -30, gR: 35, doglegX: -35, hazards: [{t:'pond',x:-10,y:200,r:35},{t:'bunker',x:20,y:300,r:15}] },
+            { par: 5, hDist: 520, hX: 30,  gR: 40, doglegX: 40,  hazards: [{t:'bunker',x:-20,y:220,r:22},{t:'pond',x:20,y:380,r:35}] },
+            { par: 4, hDist: 340, hX: -15, gR: 32, doglegX: -10, hazards: [{t:'bunker',x:25,y:200,r:18}] },
+            { par: 3, hDist: 160, hX: 20,  gR: 30, doglegX: 5,   hazards: [{t:'pond',x:-20,y:90,r:20}] },
+            { par: 5, hDist: 550, hX: 0,   gR: 40, doglegX: -20, hazards: [{t:'pond',x:5,y:280,r:40},{t:'bunker',x:35,y:420,r:20}] },
+            { par: 4, hDist: 380, hX: 25,  gR: 35, doglegX: 15,  hazards: [{t:'bunker',x:-25,y:240,r:18},{t:'bunker',x:25,y:240,r:18}] },
+            { par: 4, hDist: 430, hX: 0,   gR: 38, doglegX: 0,   hazards: [{t:'pond',x:0,y:240,r:45},{t:'bunker',x:-35,y:340,r:15}] }
         ];
 
         const CLUBS = { 
-            '1W': { maxDist: 170, f: 0.965, air: true, speed: 3.2, maxPull: 130, heightFactor: 2.2 }, 
-            '7I': { maxDist: 110, f: 0.940, air: true, speed: 2.2, maxPull: 100, heightFactor: 3.8 },  
-            'PT': { maxDist: 35,  f: 0.900, air: false, speed: 1.2, maxPull: 70, heightFactor: 0.0 }   
+            '1W': { pX: 0.05, pY: 0.11, f: 0.955, air: true,  speed: 3.2, maxPull: 140, hFactor: 0.35 }, 
+            '7I': { pX: 0.04, pY: 0.08, f: 0.930, air: true,  speed: 2.2, maxPull: 110, hFactor: 0.55 },  
+            'PT': { pX: 0.03, pY: 0.05, f: 0.880, air: false, speed: 1.2, maxPull: 70,  hFactor: 0.0 }   
         };
         function init() { VIEW_H = document.getElementById("game-container").clientHeight; canvas.width = VIEW_W; canvas.height = VIEW_H; loadHole(currentHoleIndex); canvas.addEventListener("touchstart", handleStart, {passive: false}); canvas.addEventListener("touchmove", handleMove, {passive: false}); canvas.addEventListener("touchend", handleEnd, {passive: false}); canvas.addEventListener("mousedown", handleStart); canvas.addEventListener("mousemove", handleMove); canvas.addEventListener("mouseup", handleEnd); window.requestAnimationFrame(gameLoop); }
         
         function loadHole(idx) { 
             const d = COURSE_DATA[idx]; document.getElementById("ui-hole").innerText = `${idx + 1}/9`; document.getElementById("ui-par").innerText = d.par; currentStroke = 0; document.getElementById("ui-stroke").innerText = 0; 
-            wind.angle = Math.random() * Math.PI * 2; wind.speed = Math.floor(Math.random() * 8); 
+            wind.angle = Math.random() * Math.PI * 2; wind.speed = Math.floor(Math.random() * 7); 
             document.getElementById("ui-wind").innerText = `${wind.speed}m (${Math.round(wind.angle * 180 / Math.PI)}°)`;
-            greenSlope.angle = Math.random() * Math.PI * 2; greenSlope.speed = 0.04 + Math.random() * 0.05; 
+            greenSlope.angle = Math.random() * Math.PI * 2; greenSlope.speed = 0.03 + Math.random() * 0.03; 
             const dirs = ["➔ 右", "➔ 下", "➔ 左", "➔ 上"];
             greenSlope.text = `⛳ 芝目: ${dirs[Math.floor(((greenSlope.angle + Math.PI/4) % (Math.PI * 2)) / (Math.PI / 2))]}傾斜`;
             document.getElementById("green-info").innerText = greenSlope.text;
             
             isGreenMode = false; ball.x = 0; ball.y = 0; ball.vx = 0; ball.vy = 0; ball.vz = 0; ball.z = 0; ball.isMoving = false;
-            hole.x = d.hX; hole.y = d.hY; hole.greenRadius = d.gR; selectClub('1W'); updateScore(); resetGauge(); updateDistanceDisplay();
+            hole.x = d.hX; hole.y = d.hDist; hole.greenRadius = d.gR; selectClub('1W'); updateScore(); resetGauge(); updateDistanceDisplay();
         }
         
         function selectClub(c) { if(gauge.active) return; currentClub = c; document.querySelectorAll(".club-btn").forEach(b => b.classList.toggle("active", b.innerText.includes(c))); }
-        function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = isGreenMode ? "芝目を読んでパットを沈めろ！" : "①引っ張って方向と強さを調整 ➔ ②白枠で再タップ！"; document.getElementById("power-display").style.display = "none"; }
-        function updateDistanceDisplay() { document.getElementById("ui-dist").innerText = Math.round(Math.hypot(ball.x - hole.x, ball.y - hole.y)); }
+        function resetGauge() { gauge.active = false; gauge.value = 0; gauge.dir = 1; document.getElementById("gauge-bar").style.left = "0%"; document.getElementById("guide-text").innerText = isGreenMode ? "芝目を読んでパットを沈めろ！" : "①下へ引っ張って狙う ➔ ②白枠で再タップ！"; document.getElementById("power-display").style.display = "none"; }
+        function updateDistanceDisplay() { document.getElementById("ui-dist").innerText = Math.round(Math.hypot(ball.x - hole.x, ball.y - hole.y)) + "y"; }
         
         function getEventXY(e) {
             let cx = 0, cy = 0;
             if (e.touches && e.touches.length > 0) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
-            else if (e.changedTouches && e.changedTouches.length > 0) { cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY; }
             else { cx = e.clientX; cy = e.clientY; }
             return { x: cx, y: cy };
         }
@@ -128,26 +121,21 @@
         function handleMove(e) { if (!isDragging || gauge.active) return; e.preventDefault(); const evPos = getEventXY(e), r = canvas.getBoundingClientRect(); touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top }; const dist = Math.hypot(touchCurrent.x - touchStart.x, touchCurrent.y - touchStart.y), c = CLUBS[currentClub]; document.getElementById("ui-power").innerText = Math.min(Math.round((dist / c.maxPull) * 100), 100); }
         function handleEnd(e) { 
             if (!isDragging || gauge.active) return; isDragging = false; 
-            const evPos = getEventXY(e), r = canvas.getBoundingClientRect(); touchCurrent = { x: evPos.x - r.left, y: evPos.y - r.top }; 
             let dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y; let dist = Math.hypot(dx, dy); 
             if (dist > 15) { 
                 const c = CLUBS[currentClub]; if (dist > c.maxPull) { const ratio = c.maxPull / dist; dx *= ratio; dy *= ratio; dist = c.maxPull; }
-                let pullRatio = dist / c.maxPull; let angle = Math.atan2(-dy, -dx);
+                let pullRatio = dist / c.maxPull;
                 
-                // 内部3D座標系の速度ベクトルに変換 (vyが奥方向への前進力、vxが左右ブレ)
                 if (isGreenMode) {
-                    gauge.savedPowerX = Math.cos(angle) * (c.maxDist * 0.08) * pullRatio;
-                    gauge.savedPowerY = Math.sin(angle) * (c.maxDist * 0.08) * pullRatio;
+                    gauge.savedPowerX = -dx * c.pX * 1.5;
+                    gauge.savedPowerY = -dy * c.pY * 1.5;
                 } else {
-                    // 通常ショットは画面上が「前進（奥へ進む）」
-                    let shotDirAngle = angle - Math.PI / 2;
-                    gauge.savedPowerX = Math.sin(shotDirAngle) * (c.maxDist * 0.06) * pullRatio;
-                    gauge.savedPowerY = Math.cos(shotDirAngle) * (c.maxDist * 0.06) * pullRatio;
+                    gauge.savedPowerX = -dx * c.pX;
+                    gauge.savedPowerY = Math.max(5, dy * c.pY); // 確実に前（ピンの方向）に飛ぶ設計に修正
                 }
                 gauge.savedDist = dist; gauge.active = true; gauge.value = 0; gauge.dir = 1; gauge.speed = c.speed;
                 document.getElementById("guide-text").innerText = "🔴 画面を今すぐ再タップしてタイミングよく止めて！";
             } else { document.getElementById("power-display").style.display = "none"; }
-            touchStart = null; touchCurrent = null; 
         }
 
         function triggerShot() {
@@ -156,18 +144,16 @@
             let speedX = gauge.savedPowerX, speedY = gauge.savedPowerY;
             
             if (offset > 6) {
-                // タイミングミス：左右に大きくフック・スライス
-                let penalty = ((gauge.value > 50) ? 1 : -1) * (offset / 50) * (gauge.savedDist / c.maxPull) * 8;
+                let penalty = ((gauge.value > 50) ? 1 : -1) * (offset / 50) * 1.5;
                 speedX += penalty;
                 document.getElementById("guide-text").innerText = "❌ ミスショット！打球が曲がりました！";
             } else { document.getElementById("guide-text").innerText = "✨ NICE SHOT!! 完璧なストレート！"; }
             
             ball.vx = speedX; ball.vy = speedY;
             if (c.air && !isGreenMode) {
-                ball.vz = (gauge.savedDist / c.maxPull) * c.heightFactor * 1.5; // 上方向の初速
-                ball.hangTime = Math.round(ball.vz * 12);
-            } else { ball.vz = 0; ball.hangTime = 0; }
-            ball.isMoving = true; updateScore();
+                ball.vz = (gauge.savedDist / c.maxPull) * c.hFactor * 7;
+            } else { ball.vz = 0; }
+            ball.isMoving = true;
         }
 
         function updateScore() { let t = 0; for(let i=0; i<=currentHoleIndex; i++) if(scores[i]>0) t += (scores[i] - COURSE_DATA[i].par); document.getElementById("ui-total").innerText = t === 0 ? "E" : (t > 0 ? `+${t}` : t); }
@@ -176,44 +162,38 @@
             const d = COURSE_DATA[currentHoleIndex];
             if (ball.isMoving) {
                 const c = CLUBS[currentClub];
-                // 3次元物理挙動 (風の影響)
-                if (ball.vz > 0 || ball.hangTime > 0) {
-                    ball.hangTime--; ball.z += ball.vz; ball.vz -= 0.12; // 重力加速
-                    ball.vx += Math.cos(wind.angle) * (wind.speed * 0.015);
-                    ball.vy += Math.sin(wind.angle) * (wind.speed * 0.015);
-                    if (ball.z <= 0) { ball.z = 0; ball.vz = 0; ball.hangTime = 0; }
+                
+                if (ball.vz > 0 || ball.z > 0) {
+                    ball.z += ball.vz; ball.vz -= 0.16;
+                    ball.vx += Math.cos(wind.angle) * (wind.speed * 0.005);
+                    ball.vy += Math.sin(wind.angle) * (wind.speed * 0.005);
+                    if (ball.z <= 0) { ball.z = 0; ball.vz = 0; }
                 } else {
-                    // 地面を転がる時の摩擦とグリーン傾斜
-                    ball.z = 0;
                     let fr = c.f;
                     let distToHole = Math.hypot(ball.x - hole.x, ball.y - hole.y);
-                    if (distToHole < hole.greenRadius) {
-                        // グリーン上なら芝目の影響を受ける
-                        ball.vx += Math.cos(greenSlope.angle) * greenSlope.speed * 0.15;
-                        ball.vy += Math.sin(greenSlope.angle) * greenSlope.speed * 0.15;
+                    
+                    if (isGreenMode) {
+                        ball.vx += Math.cos(greenSlope.angle) * greenSlope.speed * 0.05;
+                        ball.vy += Math.sin(greenSlope.angle) * greenSlope.speed * 0.05;
                     } else {
-                        // フェアウェイ・ラフの簡易判定 (コース中心から離れるとラフ)
-                        if (Math.abs(ball.x - (d.doglegX * (ball.y / d.hY))) > 45) fr = 0.82; // ラフ減速
+                        if (Math.abs(ball.x - (d.doglegX * (ball.y / d.hDist))) > 40) fr = 0.78;
                     }
                     ball.vx *= fr; ball.vy *= fr;
                 }
 
                 ball.x += ball.vx; ball.y += ball.vy;
                 
-                // 完全停止判定
-                if (Math.hypot(ball.vx, ball.vy) < 0.15 && ball.z <= 0) {
+                if (Math.hypot(ball.vx, ball.vy) < 0.1 && ball.z <= 0) {
                     ball.vx = 0; ball.vy = 0; ball.isMoving = false; currentStroke++;
                     document.getElementById("ui-stroke").innerText = currentStroke;
                     
-                    // グリーン乗ったか判定
                     let finalDist = Math.hypot(ball.x - hole.x, ball.y - hole.y);
                     if (finalDist < hole.greenRadius) { isGreenMode = true; selectClub('PT'); }
                     resetGauge();
                 }
 
-                // カップイン判定
                 let currentDist = Math.hypot(ball.x - hole.x, ball.y - hole.y);
-                if (ball.z <= 0 && Math.hypot(ball.vx, ball.vy) < 3.5 && currentDist < hole.radius) {
+                if (isGreenMode && ball.z <= 0 && Math.hypot(ball.vx, ball.vy) < 2.5 && currentDist < hole.radius) {
                     ball.vx = 0; ball.vy = 0; ball.isMoving = false; currentStroke++; handleHoleOut(); return;
                 }
                 updateDistanceDisplay();
@@ -229,63 +209,47 @@
             const d = COURSE_DATA[currentHoleIndex]; ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             if (!isGreenMode) {
-                // --- 【新搭載】疑似3D・背面TPSビューの描画 ---
-                // 1. 空と太陽
                 let grad = ctx.createLinearGradient(0, 0, 0, VIEW_H*0.4); grad.addColorStop(0, "#4a90e2"); grad.addColorStop(1, "#87CEEB");
                 ctx.fillStyle = grad; ctx.fillRect(0, 0, VIEW_W, VIEW_H * 0.4);
-                
-                // 2. 地平線と遠くの山々
                 ctx.fillStyle = "#1e824c"; ctx.fillRect(0, VIEW_H * 0.4, VIEW_W, VIEW_H * 0.6);
                 
-                // 3. 遠近感のあるフェアウェイ (下に行くほど広く、上に行くほどすぼまる台形)
                 ctx.fillStyle = "#2ecc71"; ctx.beginPath();
-                ctx.moveTo(VIEW_W * 0.1, VIEW_H); ctx.lineTo(VIEW_W * 0.9, VIEW_H); // 手前
-                let scaleTop = Math.max(0.1, (1 - d.hY / 600));
-                ctx.lineTo(VIEW_W/2 + (d.doglegX + 25) * scaleTop, VIEW_H * 0.4); // 奥右
-                ctx.lineTo(VIEW_W/2 + (d.doglegX - 25) * scaleTop, VIEW_H * 0.4); // 奥左
+                ctx.moveTo(VIEW_W * -0.5, VIEW_H); ctx.lineTo(VIEW_W * 1.5, VIEW_H);
+                ctx.lineTo(VIEW_W/2 + (d.doglegX + 30), VIEW_H * 0.4);
+                ctx.lineTo(VIEW_W/2 + (d.doglegX - 30), VIEW_H * 0.4);
                 ctx.closePath(); ctx.fill();
 
-                // 4. 遠くに見えるグリーン
-                let hScale = Math.max(0.05, (1 - hole.y / 600)) * 2;
-                let hHyr = VIEW_H * 0.4 + (1 - hole.y / 600) * (VIEW_H * 0.6);
-                let hXyr = VIEW_W / 2 + hole.x * hScale;
-                ctx.fillStyle = "#26ae5f"; ctx.beginPath(); ctx.ellipse(hXyr, hHyr, hole.greenRadius * hScale * 1.5, hole.greenRadius * hScale * 0.6, 0, 0, Math.PI*2); ctx.fill();
+                let progress = Math.min(1, ball.y / d.hDist);
+                let gScale = 0.1 + (progress * 0.8);
+                let gYyr = VIEW_H * 0.4 + ((d.hDist - ball.y) / d.hDist) * (VIEW_H * 0.5);
+                let gXyr = VIEW_W / 2 + (hole.x - ball.x) * gScale * 3;
                 
-                // 5. ピン（旗竿）
-                ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(hXyr, hHyr); ctx.lineTo(hXyr, hHyr - 20); ctx.stroke();
-                ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(hXyr, hHyr - 20); ctx.lineTo(hXyr - 8, hHyr - 16); ctx.lineTo(hXyr, hHyr - 12); ctx.fill();
-
-                // 6. 3D空間上のボールと影
-                let bScale = Math.max(0.1, (1 - ball.y / 600)) * 2.5;
-                let bHyr = VIEW_H * 0.4 + (1 - ball.y / 600) * (VIEW_H * 0.6);
-                let bXyr = VIEW_W / 2 + ball.x * bScale;
+                ctx.fillStyle = "#26ae5f"; ctx.beginPath(); 
+                ctx.ellipse(gXyr, gYyr, hole.greenRadius * gScale * 2, hole.greenRadius * gScale * 0.6, 0, 0, Math.PI*2); ctx.fill();
                 
-                if (ball.z > 0) { // 空中の影
-                    ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.beginPath(); ctx.arc(bXyr, bHyr, ball.radius * bScale, 0, Math.PI*2); ctx.fill();
-                }
-                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(bXyr, bHyr - ball.z, (ball.radius + ball.z*0.12) * bScale, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, 2 * gScale); ctx.beginPath(); ctx.moveTo(gXyr, gYyr); ctx.lineTo(gXyr, gYyr - 25 * gScale); ctx.stroke();
+                ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(gXyr, gYyr - 25 * gScale); ctx.lineTo(gXyr - 10 * gScale, gYyr - 21 * gScale); ctx.lineTo(gXyr, gYyr - 17 * gScale); ctx.fill();
 
-                // ひっぱりガイド線
+                ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(VIEW_W/2, VIEW_H - 50, ball.radius, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(VIEW_W/2 + ball.x, VIEW_H - 50 - ball.y - ball.z, ball.radius + ball.z * 0.08, 0, Math.PI*2); ctx.fill();
+
                 if (isDragging && touchStart && touchCurrent) {
-                    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(VIEW_W/2, VIEW_H - 40);
-                    ctx.lineTo(VIEW_W/2 - (touchCurrent.x - touchStart.x), VIEW_H - 40 - (touchCurrent.y - touchStart.y)); ctx.stroke();
+                    ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(VIEW_W/2, VIEW_H - 50);
+                    ctx.lineTo(VIEW_W/2 - (touchCurrent.x - touchStart.x)*0.7, VIEW_H - 50 - (touchCurrent.y - touchStart.y)*0.7); ctx.stroke();
                 }
             } else {
-                // --- パットモード（グリーン専用・高精度トップダウン画面） ---
                 ctx.fillStyle = "#26ae5f"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-                // カップ
-                let pX = VIEW_W / 2 + (hole.x - ball.x) * 4; let pY = VIEW_H / 2 + (hole.y - ball.y) * 4;
+                let pX = VIEW_W / 2 + (hole.x - ball.x) * 4; let pY = VIEW_H / 2 - (hole.y - ball.y) * 4;
                 ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(pX, pY, hole.radius * 1.5, 0, Math.PI * 2); ctx.fill();
-                // ピンの旗
                 ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(pX, pY); ctx.lineTo(pX, pY - 20); ctx.stroke();
-                // 芝目の矢印
-                ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 2;
-                for(let x=20; x<VIEW_W; x+=40) { for(let y=20; y<VIEW_H; y+=40) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+Math.cos(greenSlope.angle)*12, y+Math.sin(greenSlope.angle)*12); ctx.stroke(); } }
-                // 自ボール（中央固定）
-                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(VIEW_W/2, VIEW_H/2, ball.radius * 1.5, 0, Math.PI * 2); ctx.fill();
+                
+                ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 1.5;
+                for(let x=20; x<VIEW_W; x+=40) { for(let y=20; y<VIEW_H; y+=40) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+Math.cos(greenSlope.angle)*10, y+Math.sin(greenSlope.angle)*10); ctx.stroke(); } }
+                
+                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(VIEW_W/2, VIEW_H/2, ball.radius * 1.5, 0, Math.PI * 2); fill();
                 if (isDragging && touchStart && touchCurrent) {
                     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(VIEW_W/2, VIEW_H/2);
-                    ctx.lineTo(VIEW_W/2 - (touchCurrent.x - touchStart.x), VIEW_H/2 - (touchCurrent.y - touchStart.y)); ctx.stroke();
+                    ctx.lineTo(VIEW_W/2 + (touchCurrent.x - touchStart.x), VIEW_H/2 + (touchCurrent.y - touchStart.y)); ctx.stroke();
                 }
             }
         }
